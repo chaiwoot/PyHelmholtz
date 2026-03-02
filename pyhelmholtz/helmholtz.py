@@ -34,38 +34,40 @@ class Helmholtz:
 
     # this method solve the linear system Ax = b
     # modified by Chaiwoot on Dec 3, 2025 to add the solver from pymumps
+    # modified by Chaiwoot on Feb 25, 2026 to add the nested dissection and gmres
     def solve(self, solver="spsolve") -> None:
         nx_pad, ny_pad = self.domain.nx_pad, self.domain.ny_pad
         n = self.abm.n
         A, b = self.build()
         if solver == "spsolve":    # sparse direct solver of SciPy
             from scipy.sparse.linalg import spsolve
-            x = spsolve(A, b)
-        elif solver == "mumps":  # MUMPS: parallel sparse direct solver
+            x = spsolve(A, b)      # use COLAMD ordering by default
+        elif solver == "mumps":    # MUMPS: MUltifrontal Massively Parallel Sparse direct solver
             x = self.pymumps(A, b)
         elif solver == "nested_dissection":
             import scipy.sparse as sp
             from scipy.sparse.linalg import splu
             from sksparse.cholmod import analyze
 
+            # Analyze the matrix A and compute the permutation vector p
             factor_structure = analyze(A.tocsc())
-            p = factor_structure.P() # The permutation vector
+            p = factor_structure.P()
             
-            # 2. Apply permutation to A
-            # P is the permutation matrix
+            # Apply permutation to A where P is the permutation matrix
             N = A.shape[0]
             P = sp.csr_matrix((np.ones(N), (np.arange(N), p)), shape=(N, N))
             A_perm = P @ A @ P.T
             b_perm = P @ b
             
-            # 3. Solve with SciPy's splu
-            # 'NATURAL' because we've already reordered the matrix
+            # Solve the linear system with SciPy's splu using 'NATURAL' ordering
+            # because we've already reordered the matrix
             solver = splu(A_perm.tocsc(), permc_spec='NATURAL')
             x_perm = solver.solve(b_perm)
 
-            # 5. Reverse Permutation
+            # Reverse Permutation
             x = P.T @ x_perm
 
+        # Remark: iterative solver is much slower than the above direct solvers
         elif solver == "gmres":    # GMRES iterative solver of SciPy
             import scipy.sparse as sp
             from scipy.sparse.linalg import gmres, spilu, LinearOperator
@@ -86,6 +88,7 @@ class Helmholtz:
                 print(f"GMRES failed to converge ({info})")
         else:
             raise Exception(f"Solver '{solver}' is not supported. Supported solvers are 'spsolve' and 'pymumps'.")
+
         x = np.reshape(x, (ny_pad, nx_pad))
         self.u = x[n:-n, n:-n]
 
@@ -108,13 +111,9 @@ class Helmholtz:
             x = bb.copy()
             ctx.set_rhs(x)
         ctx.set_silent()
-        # ctx.set_icntl(14, 400) # Increase the workspace memory
         ctx.run(job=6)
         if ctx.myid != 0:
             x = np.zeros(b.shape[0])
-        # from mpi4py import MPI
-        # comm = MPI.COMM_WORLD
-        # comm.Bcast([x, MPI.COMPLEX], root=0)
         ctx.destroy()
         return x
 
