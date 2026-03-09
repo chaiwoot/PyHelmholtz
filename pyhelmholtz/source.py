@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod   # for abstract base class
 import numpy as np
-from .util import Util
 from .domain import Domain
 
 class Source(ABC):

@@ -1,13 +1,10 @@
 import numpy as np
+from scipy.sparse import csr_matrix, diags
 
 class Util:
 
     @staticmethod
     def pad_array2d(x: np.ndarray, n: int) -> np.ndarray:
-
-        """
-        pad the velocity array v with n cells in all directions
-        """
 
         ny, nx = x.shape
         nx_pad, ny_pad = nx + 2*n, ny + 2*n
@@ -34,291 +31,697 @@ class Util:
         return x_pad
 
     @staticmethod
-    def mask1d_sign(m: int) -> np.ndarray:
-        
-        """
-        Assign a value of 1 to the first half of the 1D array of size m, and −1 to the remaining entries.
-        """
+    def get_idx(nx, ny, nly):
 
-        mid = int(m/2)
-        mask1d = -1*np.ones(m, dtype=np.int32)
-        mask1d[:mid] = 1
+        # interior domain's indices
+        ix = np.arange(nly, nx-nly)
+        iy = np.arange(nly, ny-nly)
+        ix, iy = np.meshgrid(ix, iy)
+        idx_int = (ix + nx*iy).flatten()
 
-        return mask1d
+        # absorbing domain's indices
+        idx_abs, idx_abs_inner, idx_bd = [], [], []
 
-    @staticmethod
-    def mask2d_sign(nx: int, ny: int) -> tuple[np.ndarray, np.ndarray]:
+        ixc1, ixc2 = 0, nx-1
+        iyc1, iyc2 = 0, ny-1
 
-        """
-        Construct two 2D sign masks of size (ny × nx):
-        - mask2d_x: a 2D array marking left–right positions with +1 on the left and −1 on the right.
-        - mask2d_y: a 2D array marking bottom–top positions with +1 at the bottom and −1 at the top.
-        """
+        l1 = np.arange(ixc1, ixc2+1) + nx*iyc1 # bottom layer
+        l2 = np.arange(ixc1, ixc2+1) + nx*iyc2 # top layer
+        l3 = ixc1 + nx*np.arange(iyc1+1, iyc2) # left layer
+        l4 = ixc2 + nx*np.arange(iyc1+1, iyc2) # right layer
 
-        mask1d_x = Util.mask1d_sign(nx)
-        mask1d_y = Util.mask1d_sign(ny)
+        idx_abs = np.concatenate((l1, l2, l3, l4))
+        idx_bd = np.concatenate((l1, l2, l3, l4))
 
-        mask2d_x, mask2d_y = np.meshgrid(mask1d_x, mask1d_y)
+        if nly == 1:
+            idx_abs_inner = []
 
-        return mask2d_x, mask2d_y
+        elif nly > 1:
+            for k in range(1, nly): # klayer = [nly,..., 1]
 
-    @staticmethod
-    def distance_from_edge(m: int) -> np.ndarray:
-        
-        """
-        generate a symmetric distance-from-edge index array of length m
-        """
+                ixc1, ixc2 = k, (nx-1)-k 
+                iyc1, iyc2 = k, (ny-1)-k
 
-        # m = 8 --> [0 1 2 3 3 2 1 0]
-        # m = 9 --> [0 1 2 3 4 3 2 1 0]
-        depth = np.minimum(np.arange(m), np.arange(m)[::-1]) 
-        
-        return depth
+                l1 = np.arange(ixc1, ixc2+1) + nx*iyc1 # bottom layer
+                l2 = np.arange(ixc1, ixc2+1) + nx*iyc2 # top layer
+                l3 = ixc1 + nx*np.arange(iyc1+1, iyc2) # left layer
+                l4 = ixc2 + nx*np.arange(iyc1+1, iyc2) # right layer
+
+                idx_ = np.concatenate((l1, l2, l3, l4))            
+                idx_abs = np.concatenate((idx_abs, idx_))
+                idx_abs_inner = np.concatenate((idx_abs_inner, idx_))
+                idx_abs_inner = idx_abs_inner.astype(int)
+
+        return idx_int, idx_abs, idx_abs_inner, idx_bd
     
     @staticmethod
-    def depth2d(nx: int, ny: int) -> tuple[np.ndarray, np.ndarray]:
+    def diag_matrix(val: np.ndarray, idx: np.ndarray, p: int) -> csr_matrix:
+    
+        # len(idx) < n    
+    
+        n = len(val) # len(val) = n = nx*ny 
+        val = (val[idx])**p
 
-        """
-        Construct two 2D distance-from-edge arrays of size (ny × nx):
-        - depth2d_x: a 2D array storing the horizontal distance from the left or right edge.
-        - depth2d_y: a 2D array storing the vertical distance from the bottom or top edge.
-        """
-
-        depth1d_x = Util.distance_from_edge(nx)
-        depth1d_y = Util.distance_from_edge(ny)
-        depth2d_x, depth2d_y = np.meshgrid(depth1d_x, depth1d_y)
-
-        return depth2d_x, depth2d_y
+        return csr_matrix((val, (idx, idx)), shape=(n, n), dtype=np.complex128)
 
     @staticmethod
-    def mask2d_zone(nx: int, ny: int, nly: int) -> tuple[np.ndarray, np.ndarray]:
+    def scale_rows_by_diagonal(A: csr_matrix, idx_abs: np.ndarray, weight: np.ndarray) -> csr_matrix:
+        
+        # A.shape = (ny, nx) and weight.shape = nx*ny 
+        diagA = A.diagonal()
 
-        """
-        Construct two 2D sign masks of size (nx*ny):
-        - mask2d_phy: a 2D array marking the physical/interior region with +1 and absorbing region with +0
-        - mask2d_abs: a 2D array marking absorbing region with +1 and the physical/interior region with +0
-        """
-
-        mask2d_phy = np.zeros([ny, nx], dtype=np.int32)
-        mask2d_phy[nly:-nly, nly:-nly] = 1
-        mask2d_abs = np.abs(mask2d_phy-1)
-
-        return mask2d_phy, mask2d_abs
+        factor = np.ones_like(diagA, dtype=np.complex128)
+        factor[idx_abs] = weight[idx_abs]/diagA[idx_abs]    
+        factor_matrix = diags(factor, offsets=0, format='csr')
+        
+        scaled_A = factor_matrix @ A
+    
+        return scaled_A
 
     @staticmethod
-    def get_idx_zone(
-            nx: int,
-            ny: int,
-            nly: int,
-            nphyouter: int = 0
-        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-
-        """
-        Return a tuple of array containing 1D indices associated with each zone,
-        namely the physical domain, inner physical domain, absorbing domain, and boundary.
-        """
+    def dirichlet_bc_matrix(nx: int, ny: int) -> csr_matrix:
 
         n = nx*ny
-        nexterior = nly + nphyouter
 
-        idx2d_domain = np.arange(n, dtype=np.int32).reshape([ny, nx])
-        idx1d_domain = idx2d_domain.flatten()
+        ixc1, ixc2 = 0, nx-1 
+        iyc1, iyc2 = 0, ny-1
+
+        l1 = np.arange(ixc1, ixc2+1) + nx*iyc1 # bottom side
+        l2 = np.arange(ixc1, ixc2+1) + nx*iyc2 # top side
+        l3 = ixc1 + nx*np.arange(iyc1+1, iyc2) # left side
+        l4 = ixc2 + nx*np.arange(iyc1+1, iyc2) # right side
+
+        idx_boundary = np.concatenate((l1, l2, l3, l4))
+
+        ir = np.copy(idx_boundary)
+        ic = np.copy(idx_boundary)
+        val = np.ones_like(idx_boundary)
         
-        idx1d_phy = idx2d_domain[nly:-nly, nly:-nly].flatten()
-        idx1d_phy_inner = idx2d_domain[nexterior:-nexterior, nexterior:-nexterior].flatten()
-        idx1d_abs = idx1d_domain[~np.isin(idx1d_domain, idx1d_phy)]
-
-        idx1d_not_boundary = idx2d_domain[1:-1, 1:-1].flatten()
-        idx1d_boundary = idx1d_domain[~np.isin(idx1d_domain, idx1d_not_boundary)]
-
-        return idx1d_phy, idx1d_phy_inner, idx1d_abs, idx1d_boundary
-
+        return csr_matrix((val, (ir, ic)), shape=(n, n), dtype=np.complex128)
+    
     @staticmethod
-    def get_sign(idx: int, nx:int, ny:int, axis: str) -> int:
+    def compute_RL_weights(nx, ny, n, damping_profile):
+
+        distance_from_ends = lambda m: np.minimum(np.arange(m), np.arange(m)[::-1])
+
+        depth_x_1d = distance_from_ends(nx)
+        depth_y_1d = distance_from_ends(ny)
+        depth_x_2d, depth_y_2d = np.meshgrid(depth_x_1d, depth_y_1d)
+
+        labeled_abslayer_2d = np.minimum(depth_x_2d, depth_y_2d)
+        labeled_abslayer_2d[n:-n, n:-n] = n
+        labeled_abslayer_2d = n - labeled_abslayer_2d
+
+        labeled_abslayer_1d = labeled_abslayer_2d.flatten()
+        weight_ow = damping_profile(labeled_abslayer_1d, n)
+
+        weight_hh = 1 - weight_ow
         
-        """
-        Return a value (+1 or −1) indicating the use of a forward or backward stencil, respectively,
-        based on the index position, domain size, and derivative axis.
-        """
-
-        mask2d_x, mask2d_y = Util.mask2d_sign(nx, ny)
-
-        if axis == 'x':
-            return (mask2d_x.flatten())[idx]
-        
-        elif axis == 'y':
-            return (mask2d_y.flatten())[idx] 
-
-    # absorbing layers
+        return weight_ow, weight_hh
+    
     @staticmethod
-    def get_abslayer2d(nx: int, ny:int, nly: int) -> np.ndarray:
+    def corner_treatment(A, coeff, nx, ny, nly):
 
-        """
-        Return a 2D array that represents the k-th absorbing layer,
-        with the physical domain assigned a value of 0.
-        """
+        idx_corners = np.zeros(4*nly, dtype=np.int32)
+        for k in range(nly): # k = [0, ..., nly-1] => klayer = [nly, ..., 1]
 
-        depth2d_x, depth2d_y = Util.depth2d(nx, ny)
-        abslayer2d = np.minimum(depth2d_x, depth2d_y)
-        abslayer2d[nly:-nly, nly:-nly] = nly
-        abslayer2d = nly - abslayer2d
+            ixc1, ixc2 = k, (nx-1)-k 
+            iyc1, iyc2 = k, (ny-1)-k
+            idx_ = np.array([ixc1+nx*iyc1, ixc1+nx*iyc2, ixc2+nx*iyc1, ixc2+nx*iyc2])
+            idx_corners[4*k:4*k+4] = idx_
 
-        return abslayer2d
+        A[idx_corners, :] = coeff * A[idx_corners, :]
 
+        return A
+    
     @staticmethod
-    def get_abszone(nx: int, ny:int, nly:int) -> np.ndarray:
-
-        """
-        Return a 2D array that represents the zone classification, where
-        - corner regions in the absorbing layer are assigned a value of 0,
-        - bottom/top sides in the absorbing layer are assigned a value of 1,
-        - left/right sides in the absorbing layer are assigned a value of −1, and
-        - the physical domain is assigned a value of 2.
-        """
+    def build_matrix(idx, nx, ny, dv_axis, swap, stencil):
 
         n = nx*ny
-        depth2d_x, depth2d_y = Util.depth2d(nx, ny)
-        depth1d_x, depth1d_y = depth2d_x.flatten(), depth2d_y.flatten()
+        translation = swap
 
-        abszone1d = np.empty(n, dtype=np.int32)
-        abszone1d[depth1d_x == depth1d_y] = 0 # corner zone in absorbing layer
-        abszone1d[depth1d_x > depth1d_y] = 1 # down/top sides in absorbing layer
-        abszone1d[depth1d_x < depth1d_y] = -1 # left/right sides in absorbing layer
-        abszone2d = abszone1d.reshape([ny, nx])
-        abszone2d[nly:-nly, nly:-nly] = 2 # physical domain
+        if dv_axis == "x":
+            translation *= 1
 
-        return abszone2d
+        elif dv_axis == "y":
+            translation *= nx
 
-    @staticmethod
-    def get_idx_abslayer(k: int, abslayer2d:np.ndarray) -> np.ndarray:
+        # elif dev_axis == "z":
+        #     translation *= nx*ny    
+
+        nnode, dv_order, idx_stencil, coeff = stencil.unpack()
         
-        """
-        Return the indices of the given k-th absorbing layer.
-        """
+        ir = np.repeat(idx, nnode)
+        ic = ir + np.tile(translation*idx_stencil, len(idx))
+        val = np.tile(coeff, len(idx))
+        
+        return csr_matrix((val, (ir, ic)), shape=(n, n), dtype=np.complex128)
+    
+    @staticmethod
+    def convert_to_idx(ix, iy, nx):
 
-        abslayer1d = abslayer2d.flatten()
-        idx = np.where(abslayer1d == k)[0]
+        ix, iy = np.meshgrid(ix, iy)
+        idx = (ix + nx*iy).flatten()
 
         return idx
-
+    
     @staticmethod
-    def get_nal2d_abs(nx: int, ny: int, nly: int, axis: str, nalstencil_max: int) -> np.ndarray:
-        
-        """
-        Return a 2D array that specifies the armlength of stencil for each grid point in a 2D domain,
-        based on the domain size (nx and ny), number of absorbing layer (nly),
-        derivative axis (x- or y-direction), and maximum armlength.
-        """
-        
-        const = nalstencil_max + 3
-        mask2d_phy, mask2d_abs = Util.mask2d_zone(nx, ny, nly)
+    def build_At(nx, ny, nly, roi, stc_list):
 
-        # absorbing domain (axis = x or y)
-        if axis == 'x':
-            depth2d_axis, _ = Util.depth2d(nx, ny)
-            mask2d_sign_axis, _ = Util.mask2d_sign(nx, ny)
-            
-        elif axis == 'y':
-            _, depth2d_axis = Util.depth2d(nx, ny)
-            _, mask2d_sign_axis = Util.mask2d_sign(nx, ny)
+        if roi == "absorbing_domain":
+            kmax = nly
 
-        nal1d_abs = np.copy((mask2d_sign_axis*depth2d_axis).flatten())
-        nal1d_abs[np.abs(nal1d_abs)>=nalstencil_max] = nalstencil_max
-        nal2d_abs = nal1d_abs.reshape([ny, nx])
-        nal2d_abs = mask2d_abs*nal2d_abs + const*mask2d_phy
+        elif roi == "boundary":
+            kmax = 1
 
-        return nal2d_abs
-
-    @staticmethod
-    def get_narmlength_arr(nal2d: np.ndarray, nly: int, nphyouter: int, zone: str) -> np.ndarray:
-
-        """
-        Return a 1D array of stencil lengths (from minimum to maximum)
-        based on the given domain size and zone.
-        """
-        
-        ny, nx = nal2d.shape
-        nal1d = nal2d.flatten()
-        idx1d_phy, idx1d_phy_inner, idx1d_abs, _ = Util.get_idx_zone(nx, ny, nly, nphyouter)
-
-        if zone == 'phy':
-            nalarr = np.unique(nal1d[idx1d_phy])
-        
-        # nphyouter = 1,2,... (for PML case)
-        elif zone == 'phy_inner':
-            nalarr = np.unique(nal1d[idx1d_phy_inner])
-
-        elif zone == 'abs':
-            nalarr = np.unique(nal1d[idx1d_abs])
-        
-        return nalarr[np.argsort(abs(nalarr))]
-
-    @staticmethod
-    def get_idx_abs_corners(
-            klayer: int,
-            nx: int,
-            ny: int,
-            nly: int
-        ) -> tuple[int, int, int, int]:
-
-        """
-        Return the corner indices of the given k-layer absorbing domain.
-        """
-
-        if klayer > nly:
-            raise Exception('klayer should be less than or equal to nly.')
-
-        depth = nly - klayer
-
-        ixc1 = depth
-        ixc2 = nx - 1 - depth
-        iyc1 = depth
-        iyc2 = ny - 1 - depth
-        
-        return ixc1, ixc2, iyc1, iyc2
-
-    @staticmethod
-    def get_idx_abslayer_corners_and_sides(
-            klayer: int,
-            nx: int,
-            ny: int,
-            nly: int
-        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-                np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        
-        """
-        Return the index positions of the specified k-layer absorbing domain,
-        ordered as left, right, bottom, top, and the four corner regions.
-        """
-
-        ixc1, ixc2, iyc1, iyc2 = Util.get_idx_abs_corners(klayer, nx, ny, nly)
-
-        clb = np.array([ixc1 + nx*iyc1])
-        crb = np.array([ixc2 + nx*iyc1])
-        clt = np.array([ixc1 + nx*iyc2])
-        crt = np.array([ixc2 + nx*iyc2])
-
-        sl = ixc1 + nx*np.arange(iyc1+1, iyc2, dtype=np.int32)
-        sr = ixc2 + nx*np.arange(iyc1+1, iyc2, dtype=np.int32)
-        sb = np.arange(ixc1+1, ixc2, dtype=np.int32) + nx*iyc1
-        st = np.arange(ixc1+1, ixc2, dtype=np.int32) + nx*iyc2
-
-        return sl, sr, sb, st, clb, crb, clt, crt
-
-    # This method returns the row and column indices of a sparse matrix of type csr_matrix
-    # Added by Chaiwoot on Dec 5, 2025    
-    @staticmethod
-    def get_row_col_indices_of_csr_matrix(A):
-        from scipy.sparse import csr_matrix
-        if isinstance(A, csr_matrix):
-            column_indices = A.indices
-            indptr = A.indptr
-            num_non_zero = A.nnz
-            row_indices = np.empty(num_non_zero, dtype=np.intp)
-            for i in range(A.shape[0]):
-                start = indptr[i]
-                end = indptr[i+1]
-                row_indices[start:end] = i
-            return (row_indices, column_indices)
         else:
-            raise Exception("The input is not an instance of class scipy.sparse.csr_matrix!")
+            raise Exception("roi is either \"absorbing_domain\" or \"boundary\".")
+
+        almax = max(stc_list)
+        
+        Axt, Ayt = [], []
+
+        ### 1: inner zone
+        ### 1.1: asymmetric stencil
+        for k in range(min(kmax, almax), almax):
+                                                                                        
+            al = k
+            stc = stc_list.get(al)
+                                                            
+            # bottom (fw)																		
+            ix = k																		
+            iy = np.arange(kmax)
+            idx = Util.convert_to_idx(ix, iy, nx)		
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+
+            # bottom (bw)																		
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))																	                                                                                                                                                                                                                       																		
+                                                                                    
+            # top (fw)																		
+            ix = k																		
+            iy = np.arange(ny-kmax, ny)
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+
+            # top (bw)																		
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))																																				
+                                                                                    
+            # left (fw)																		
+            iy = k																		
+            ix = np.arange(kmax)
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+
+            # left (bw)																		
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))																	
+                                                                                    
+            # right (fw)																		
+            iy = k																		
+            ix = np.arange(nx-kmax, nx)
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+
+            # right (bw)																		
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))														
+
+        ### 1.2: symmetric stencil
+        stc = stc_list.get(almax)
+
+        # bottom																			
+        ix = np.arange(max(kmax, almax), nx-max(kmax, almax))																			
+        iy = np.arange(kmax)
+        idx = Util.convert_to_idx(ix, iy, nx)
+        Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+
+        # top																			
+        iy = np.arange(ny-kmax, ny)
+        idx = Util.convert_to_idx(ix, iy, nx)																			
+        Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))																																					
+                                                                                    
+        # left																			
+        ix = np.arange(kmax)																			
+        iy = np.arange(max(kmax, almax), ny-max(kmax, almax))
+        idx = Util.convert_to_idx(ix, iy, nx)																			
+        Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))																			
+
+        # right																			
+        ix = np.arange(nx-kmax, nx)
+        idx = Util.convert_to_idx(ix, iy, nx)																			
+        Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+
+        ### 2: outer zone
+        for k in range(1, kmax):
+
+            al = min(k, almax)
+            stc = stc_list.get(al)
+
+            # bottom (fw)																		
+            ix = k																		
+            iy = np.arange(k)
+            idx = Util.convert_to_idx(ix, iy, nx)																																					
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))																		
+            
+            # bottom (bw)																		
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)																																					
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))																		
+                                                                                    
+            # top (fw)																		
+            ix = k																		
+            iy = (ny - 1) - np.arange(k)
+            idx = Util.convert_to_idx(ix, iy, nx)																																					
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))																		
+            
+            # top (bw)																		
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)																																				
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))																		
+                                                                                    
+            # left (fw)																		
+            iy = k																		
+            ix = np.arange(k)
+            idx = Util.convert_to_idx(ix, iy, nx)																																						
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))																	
+            
+            # left (bw)																		
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy,nx)																																						
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))																		
+                                                                                    
+            # right (fw)																		
+            iy = k																		
+            ix = (nx - 1) - np.arange(k)
+            idx = Util.convert_to_idx(ix, iy,nx)																																						
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))																	
+            
+            # right (bw)																		
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)																																						
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+
+        ### 3: corner
+        for klayer in range(1, kmax+1):
+
+            k = kmax - klayer
+            al = min(k, almax)
+            stc = stc_list.get(al)
+            
+            # left-bottom (+,+)
+            ix = k
+            iy = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+        
+            # right-bottom (-,+)
+            ix = (nx-1)-k
+            iy = k
+            idx = Util.convert_to_idx(ix, iy, nx)																			
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+        
+            # left-top (+,-)
+            ix = k
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)																			
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+            
+            # right-top (-,-)
+            ix = (nx-1)-k
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)																			
+            Axt.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))
+            Ayt.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+
+        Axt, Ayt = sum(Axt), sum(Ayt)	
+
+        return Axt, Ayt
+    
+    @staticmethod
+    def build_An(nx, ny, nly, roi, stc_list):
+
+        if roi == "absorbing_domain":
+            kmax = nly
+
+        elif roi == "boundary":
+            kmax = 1
+
+        else:
+            raise Exception("roi is either \"absorbing_domain\" or \"boundary\".")
+
+        almax = max(stc_list)
+        
+        Axn, Ayn = [], []        
+        for k in range(kmax):
+
+            ixc1, ixc2 = k, (nx-1) - k
+            iyc1, iyc2 = k, (ny-1) - k
+        
+            al = min(k, almax)
+            stc = stc_list.get(al)
+        
+            # left side (exclude corner)
+            ix = ixc1
+            iy = np.arange(iyc1+1, iyc2)
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axn.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+            
+            # right side (exclude corner)
+            ix = ixc2
+            iy = np.arange(iyc1+1, iyc2)
+            idx = Util.convert_to_idx(ix, iy, nx)																			
+            Axn.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))
+
+            # bottom side (exclude corner)
+            ix = np.arange(ixc1+1, ixc2)
+            iy = iyc1
+            idx = Util.convert_to_idx(ix, iy, nx)																			
+            Ayn.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+            
+            # top side (exclude corner)
+            ix = np.arange(ixc1+1, ixc2)
+            iy = iyc2
+            idx = Util.convert_to_idx(ix, iy, nx)																			
+            Ayn.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+            
+            # left-bottom corner
+            ix = ixc1
+            iy = iyc1
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axn.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+            Ayn.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+            
+            # right-bottom corner
+            ix = ixc2
+            iy = iyc1
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axn.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))
+            Ayn.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+            
+            # left-top corner
+            ix = ixc1
+            iy = iyc2
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axn.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+            Ayn.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+            
+            # right-top corner
+            ix = ixc2
+            iy = iyc2
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axn.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))
+            Ayn.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+
+        Axn, Ayn = sum(Axn), sum(Ayn)
+
+        return Axn, Ayn
+    
+    @staticmethod
+    def build_Axx(nx, ny, nly, nphy, absmethod, stcdv2_list):
+
+        almax = max(stcdv2_list)
+
+        if absmethod == "PML":
+            iy = np.arange(1, ny-1)
+        
+        elif absmethod == "RenLiu":
+            iy = np.arange(nly, ny-nly)
+
+        else:
+            raise Exception("absmethod is either \"PML\" or \"RenLiu\".")
+
+        kmin = min(nly+nphy, almax)
+        kmax = max(nly+nphy, almax)
+        
+        Axx = []
+        for k in range(kmin, almax):
+            
+            al = k
+            stc = stcdv2_list.get(al)
+
+            # forward one-sided stencil
+            ix = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+                                                                                                                    
+            # backward one-sided stencil
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))                                                                                                                                                                                                                       
+
+        # symmetric stencil
+        stc = stcdv2_list.get(almax)
+        
+        ix = np.arange(kmax, nx-kmax)	
+        idx = Util.convert_to_idx(ix, iy, nx)
+        Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+
+        Axx = sum(Axx)
+
+        return Axx
+    
+    @staticmethod
+    def build_Axx_abs_inner(nx, ny, nly, stcdv2_list):
+    
+        almax = max(stcdv2_list)
+
+        # absorbing zone 1
+        iy_bottom = np.arange(1, nly)
+        iy_top = (ny-1) - iy_bottom
+        iy = np.concatenate((iy_bottom, iy_top))
+        
+        Axx = []
+        for k in range(1, almax):
+            
+            al = k
+            stc = stcdv2_list.get(al)
+
+            # forward one-sided stencil
+            ix = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))                                                                                                                                                                                                                     
+
+            # backward one-sided stencil
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))                                                                                                                                                                                                                       
+
+        # symmetric stencil
+        stc = stcdv2_list.get(almax)
+        
+        ix = np.arange(almax, nx-almax)	
+        idx = Util.convert_to_idx(ix, iy, nx)
+        Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))
+
+        # absorbing zone 2
+        iy = np.arange(nly, ny-nly)
+        for k in range(1, nly):
+            
+            al = min(k, almax) # when al = almax, swap paramether is not affect.
+            stc = stcdv2_list.get(al)
+
+            # forward one-sided stencil
+            ix = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=stc))                                                                                                                                                                                                                     
+
+            # backward one-sided stencil
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axx.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=stc))
+
+        Axx = sum(Axx)
+
+        return Axx
+
+    @staticmethod
+    def build_Ayy(nx, ny, nly, nphy, absmethod, stcdv2_list):
+        
+        almax = max(stcdv2_list)
+
+        if absmethod == "PML":
+            ix = np.arange(1, nx-1)
+
+        elif absmethod == "RenLiu":
+            ix = np.arange(nly, nx-nly)
+
+        else:
+            raise Exception("absmethod is either \"PML\" or \"RenLiu\".")
+
+        kmin = min(nly+nphy, almax)
+        kmax = max(nly+nphy, almax)
+
+        Ayy = []
+        for k in range(kmin, almax):
+            
+            al = k
+            stc = stcdv2_list.get(al)
+
+            # forward one-sided stencil
+            iy = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))                                                                                                                                                                                                                     
+
+            # backward one-sided stencil
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))                                                                                                                                                                                                                       
+
+        # symmetric stencil
+        stc = stcdv2_list.get(almax)
+
+        iy = np.arange(kmax, ny-kmax)	
+        idx = Util.convert_to_idx(ix, iy, nx)
+        Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+
+        Ayy = sum(Ayy)
+
+        return Ayy
+    
+    @staticmethod
+    def build_Ayy_abs_inner(nx, ny, nly, stcdv2_list):
+    
+        almax = max(stcdv2_list)
+
+        # absorbing zone 1
+        ix_left = np.arange(1, nly)
+        ix_right = (nx-1) - ix_left
+        ix = np.concatenate((ix_left, ix_right))
+
+        Ayy = []
+        for k in range(1, almax):
+            
+            al = k
+            stc = stcdv2_list.get(al)
+
+            # forward one-sided stencil
+            iy = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))                                                                                                                                                                                                                     
+
+            # backward one-sided stencil
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))                                                                                                                                                                                                                       
+
+        # symmetric stencil
+        stc = stcdv2_list.get(almax)
+        
+        iy = np.arange(almax, ny-almax)	
+        idx = Util.convert_to_idx(ix, iy, nx)
+        Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))
+
+        # absorbing zone 2
+        ix = np.arange(nly, nx-nly)
+        for k in range(1, nly):
+            
+            al = min(k, almax) # when al = almax, swap paramether is not affect.
+            stc = stcdv2_list.get(al)
+
+            # forward one-sided stencil
+            iy = k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=stc))                                                                                                                                                                                                                     
+
+            # backward one-sided stencil
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Ayy.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=stc))
+
+        Ayy = sum(Ayy)
+
+        return Ayy
+
+    @staticmethod
+    def build_Axxpml(nx, ny, nly, nphy, pmlstcdv2_list, p_profile):
+    
+        iy = np.arange(1, ny-1)
+        almax = max(pmlstcdv2_list)
+
+        Axxpml = []
+        for k in range(1, nly+nphy):
+
+            al = min(k, almax)
+            
+            # left zone
+            ix = k
+            pmlstc = pmlstcdv2_list.get(al)
+            pmlstc.coeff = Util.calculate_coeff(ix, nx, nly, pmlstc, p_profile)
+
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axxpml.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=1, stencil=pmlstc))
+
+            # right zone
+            ix = (nx-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx)
+            Axxpml.append(Util.build_matrix(idx, nx, ny, dv_axis="x", swap=-1, stencil=pmlstc))
+
+        Axxpml = sum(Axxpml)
+
+        return Axxpml
+    
+    @staticmethod
+    def build_Ayypml(nx, ny, nly, nphy, pmlstcdv2_list, p_profile):
+
+        ix = np.arange(1, nx-1)
+        almax = max(pmlstcdv2_list)
+
+        Ayypml = []
+        for k in range(1, nly+nphy):
+
+            al = min(k, almax)
+
+            # bottom zone
+            iy = k
+            pmlstc = pmlstcdv2_list.get(al)
+            pmlstc.coeff = Util.calculate_coeff(iy, ny, nly, pmlstc, p_profile)
+
+            idx = Util.convert_to_idx(ix, iy, nx) 
+            Ayypml.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=1, stencil=pmlstc))
+
+            # top zone
+            iy = (ny-1) - k
+            idx = Util.convert_to_idx(ix, iy, nx) 
+            Ayypml.append(Util.build_matrix(idx, nx, ny, dv_axis="y", swap=-1, stencil=pmlstc))
+
+        Ayypml = sum(Ayypml)
+
+        return Ayypml
+    
+    @staticmethod
+    def calculate_coeff(ix_or_iy, nx_or_ny, nly, pmlstc, q_profile):
+    
+        idx_qstencil = pmlstc.idx_qstencil
+        weight_q = pmlstc.weight_q
+
+        # calculate depth_q
+        # In this work, the absorbing domain is implemented with uniform thickness on all four boundaries.
+        if ix_or_iy < round(nx_or_ny/2):
+            iq = ix_or_iy + idx_qstencil
+            depth_q = nly - iq
+            depth_q0 = nly - ix_or_iy
+
+        if depth_q0 < 0:
+            depth_q0 = 0
+
+        depth_q[depth_q<0] = 0
+
+        # calculate q
+        q = q_profile(depth_q, nly)
+
+        # calculate coeff
+        coeff = weight_q @ q
+
+        q0 = q_profile(depth_q0, nly)
+        coeff = q0*coeff
+
+        return coeff
