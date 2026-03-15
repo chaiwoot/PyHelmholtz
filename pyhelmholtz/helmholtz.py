@@ -25,16 +25,18 @@ class Helmholtz:
         self.fd = fd
         self.domain.pad_velocity(self.abm.n)
 
-    # this method forms the matrices A and b
+    # This method forms the system matrix A and the source vector b.
     def build(self):
         A = self.abm.build_A(self.domain, self.source, self.fd)
         b = self.source.build_b(self.domain, self.abm.n)
         self.A = A
         return (A, b)
 
-    # this method solve the linear system Ax = b
-    # modified by Chaiwoot on Dec 3, 2025 to add the solver from pymumps
-    # modified by Chaiwoot on Feb 25, 2026 to add the nested dissection and gmres
+    # This method solve the linear system Ax = b
+    # Modified by Chaiwoot on Dec 3, 2025 to add the solver from pymumps
+    # Modified by Chaiwoot on Feb 25, 2026 to add the nested dissection and gmres
+    # Modified by Chaiwoot on Mar 15, 2026 to avoid an error when MUMPS/PyMUMPS/scikit-sparse is not available
+    # Note that SciPy is mandatory for this method to work properly.
     def solve(self, solver="spsolve") -> None:
         nx_pad, ny_pad = self.domain.nx_pad, self.domain.ny_pad
         n = self.abm.n
@@ -43,30 +45,40 @@ class Helmholtz:
             from scipy.sparse.linalg import spsolve
             x = spsolve(A, b)      # use COLAMD ordering by default
         elif solver == "mumps":    # MUMPS: MUltifrontal Massively Parallel Sparse direct solver
-            x = self.pymumps(A, b)
+            try:
+                x = self.pymumps(A, b)
+            except Exception:
+                print("Since MUMPS or PyMUMPS is not available, SciPy's spsolve() is used instead!")
+                from scipy.sparse.linalg import spsolve
+                x = spsolve(A, b)
         elif solver == "nested_dissection":
             import scipy.sparse as sp
             from scipy.sparse.linalg import splu
-            from sksparse.cholmod import analyze
 
-            # Analyze the matrix A and compute the permutation vector p
-            factor_structure = analyze(A.tocsc())
-            p = factor_structure.P()
-            
-            # Apply permutation to A where P is the permutation matrix
-            N = A.shape[0]
-            P = sp.csr_matrix((np.ones(N), (np.arange(N), p)), shape=(N, N))
-            A_perm = P @ A @ P.T
-            b_perm = P @ b
-            
-            # Solve the linear system with SciPy's splu using 'NATURAL' ordering
-            # because we've already reordered the matrix
-            solver = splu(A_perm.tocsc(), permc_spec='NATURAL')
-            x_perm = solver.solve(b_perm)
+            try:
+                from sksparse.cholmod import analyze
 
-            # Reverse Permutation
-            x = P.T @ x_perm
+                # Analyze the matrix A and compute the permutation vector p
+                factor_structure = analyze(A.tocsc())
+                p = factor_structure.P()
+                
+                # Apply permutation to A where P is the permutation matrix
+                N = A.shape[0]
+                P = sp.csr_matrix((np.ones(N), (np.arange(N), p)), shape=(N, N))
+                A_perm = P @ A @ P.T
+                b_perm = P @ b
+                
+                # Solve the linear system with SciPy's splu using 'NATURAL' ordering
+                # because we've already reordered the matrix
+                solver = splu(A_perm.tocsc(), permc_spec='NATURAL')
+                x_perm = solver.solve(b_perm)
 
+                # Reverse Permutation
+                x = P.T @ x_perm
+            except Exception:
+                print("Since scikit-sparse is not available, SciPy's spsolve() is used instead!")
+                from scipy.sparse.linalg import spsolve
+                x = spsolve(A, b)
         # Remark: iterative solver is much slower than the above direct solvers
         elif solver == "gmres":    # GMRES iterative solver of SciPy
             import scipy.sparse as sp
@@ -93,8 +105,8 @@ class Helmholtz:
         self.u = x[n:-n, n:-n]
 
     # Interface to the complex-arithmetic MUMPS solver
-    # added by Chaiwoot on Dec 3, 2025
-    # last modified on Dec 5, 2025
+    # Added by Chaiwoot on Dec 3, 2025
+    # Last modified on Dec 5, 2025
     def pymumps(self, A, b):
         from mumps import ZMumpsContext
         from scipy.sparse import csr_matrix
@@ -118,7 +130,7 @@ class Helmholtz:
         return x
 
     # This method is a quick tool for visualizing various fields and medium property.
-    # modified by Chaiwoot on Dec 9, 2025
+    # Modified by Chaiwoot on Dec 9, 2025
     # - combine <unit> and <scale>
     # - add <vlim>
     # - rename <plotmode> as <mode>, <colormap> as <cmap>
@@ -252,7 +264,7 @@ class Helmholtz:
         k0 = 2*np.pi*freq/LIGHT_SPEED
         kbg = np.sqrt(epsr_bg)*k0
 
-        # compute the total field
+        # Compute the total field
         ny, nx = X.shape
         k1 = k0*np.sqrt(epsr_cylinder)
         Dist2D = np.sqrt((X-xc)**2 + (Y-yc)**2)
@@ -282,7 +294,7 @@ class Helmholtz:
             coeff[cond_inside] = Cm*sp.jv(m, k1r)
             Ez_total += coeff.reshape([ny, nx])*np.exp(1j*m*Phi2D)
 
-        # compute the scattered field
+        # Compute the scattered field
         Ez_sc = Ez_total - self.source.ui
         
         return Ez_total, Ez_sc

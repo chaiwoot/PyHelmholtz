@@ -29,7 +29,7 @@ class RenLiu(ABM):
     When n > 1, the Ren-Liu hybrid ABC is used.
     """
 
-    def __init__(self, abm="EM1", n=1, damping_profile=None):
+    def __init__(self, abm="EM2", n=1, damping_profile=None):
         super().__init__(abm, n, damping_profile)
 
         # first-order and second-order Engquist-Majda ABC
