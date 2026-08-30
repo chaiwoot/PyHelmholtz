@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyhelmholtz"
+version = "0.1.11"
+authors = [
+    { name = "S. Inpuak & C. Boonyasiriwat" },
+]
+description = "PyHelmholtz is a framework for benchmarking absorbing boundary methods for 2D Helmholtz equation."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+# Core dependencies required for standard SciPy spsolve() functionality
+dependencies = [
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "matplotlib",
+]
+
+# Optional features enabled via: pip install pyhelmholtz[suitesparse]
+[project.optional-dependencies]
+suitesparse = [
+    "scikit-sparse>=0.4.0",
+]
+mumps = [
+    "pymumps; sys_platform != 'win32'",
+]
+
+[project.urls]
+Homepage = "https://github.com/chaiwoot/PyHelmholtz"
+Issues = "https://github.com/chaiwoot/PyHelmholtz/issues"
