@@ -161,10 +161,12 @@ class Helmholtz:
                 from mpi4py import MPI
                 if MPI.COMM_WORLD.Get_size() > 1:
                     MPI.COMM_WORLD.Bcast(x, root=0)
+                    
         # if ctx.comm is not None:
         #     # If running via mpiexec, use the internal mpi4py communicator to sync data
         #     ctx.comm.Bcast(x, root=0)
         ctx.destroy()
+        
         return x
 
     # This method is a quick tool for visualizing various fields and medium property.
@@ -195,7 +197,7 @@ class Helmholtz:
                 if title == "": title = "Velocity"
 
             elif data == "solution":
-                viz2D = self.u
+                viz2D = self.u # (nyp, nxp)
 
                 if self.source.source_type == "plane_wave":
                     if title == "": title = "Scattered field"
@@ -205,18 +207,16 @@ class Helmholtz:
             elif data == "incident":    # incident field
 
                 if self.source.source_type == "plane_wave":
-                    # viz2D = self.source.ui[n:-n,n:-n]
                     viz2D = self.source.uincp_2d
                 else:
                     viz2D = np.zeros_like(self.u)
 
                 if title == "": title = "Incident field"
                 
-            elif data == "total":       # total field
+            elif data == "total": # total field
 
                 if self.source.source_type == "plane_wave":
-                    # viz2D = self.u + self.source.ui[n:-n,n:-n]
-                    viz2D = self.u + self.source.ui
+                    viz2D = self.u + self.source.uincp_2d
                 else:
                     viz2D = self.u
 
