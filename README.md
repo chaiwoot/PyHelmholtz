@@ -52,23 +52,23 @@ pip install pyhelmholtz[mumps]
 ## Quick Start
 
 Here is a quick example of how to use `PyHelmholtz` to solve the Helmholtz equation using the default parameters:
-- homogeneous domain of size [-1,1]x[-1,1] m<sup>2</sup> with wave speed of 3<sup>8</sup> m/s and grid spacing of 1 cm
-- point source of frequency 2<sup>9</sup> Hz located at the center of the domain
+- homogeneous domain of size [-1,1]x[-1,1] m<sup>2</sup> with wave speed of 3x10<sup>8</sup> m/s and grid spacing of 1 cm
+- point source of frequency 2x10<sup>9</sup> Hz located at the center of the domain
 - the second-order Engquist-Majda absorbing boundary condition is used to prevent boundary reflections
 - second-order finite-difference (FD) schemes are used
 
 ```python
 import pyhelmholtz as ph
-ho = ph. Helmholtz () # create an Helmholtz object with default parameters
-ho. solve ()          # SciPy ’s spsolve () is used by default as the sparse linear solver
-ho. viz ()            # visualize the real part of the wave field u
+ho = ph.Helmholtz() # create an Helmholtz object with default parameters
+ho.solve()          # SciPy ’s spsolve () is used by default as the sparse linear solver
+ho.viz()            # visualize the real part of the wave field u
 ```
 
-Here is another example in which several parameters were manually set. These include the grid spacing h = 10 m, the horizontal and vertical domain limits = [0,1000], [0,500], respectively, the wave speed = 1000 m/s, the point source frequency = 10 Hz and location = [500, 250]. In addition, the perfectly matched layer (PML) is used as the absorbing boundary method, and the fourth-order FD schemes are used in the calculation.
+Here is another example in which several parameters were manually set. These include the grid spacing h = 10 m, the horizontal and vertical domain limits = [0,1000]x[0,500] m<sup>2</sup>, respectively, the wave speed = 1000 m/s, the point source frequency = 10 Hz and location = [500, 250] m. In addition, the perfectly matched layer (PML) is used as the absorbing boundary method, and the fourth-order FD schemes are used in the calculation.
 
 ```python
 import pyhelmholtz as ph
-domain = ph.Domain(h=10, limits=[0,1000,0,500], v=1000)
+domain = ph.Domain(h=10, limits=[0, 1000, 0, 500], v=1000)
 source = ph.PointSource(freq=10, xs=500, ys=250)
 ho = ph.Helmholtz(domain=domain, abm=ph.PML(), source=source, fd=ph.FD(4))
 ho.solve()
