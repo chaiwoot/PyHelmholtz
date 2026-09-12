@@ -4,7 +4,7 @@ A Python package for solving the 2D Helmholtz equation and benchmarking absorbin
 
 ## Features
 
-- Fast frequency-domain wave propagation modeling.
+- Frequency-domain wave propagation modeling.
 - Support for standard sparse direct solvers via SciPy.
 - Optional high-performance nested dissection algorithms via SuiteSparse.
 - Optional parallel direct solver acceleration via MUMPS.
