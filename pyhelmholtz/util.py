@@ -199,7 +199,7 @@ class Util:
 
             flip_map = np.broadcast_to(flip_map.reshape(-1, 1), (ny, nx))
 
-        return radius_map, flip_map # flip อยากเปลี่ยนเป็นชื่ออื่น
+        return radius_map, flip_map
     
     @staticmethod
     def get_idx_at_layer_k(nx, ny, k):
