@@ -83,11 +83,12 @@ class Util:
 
             ixc1, ixc2 = k, (nx-1)-k 
             iyc1, iyc2 = k, (ny-1)-k
-            idx_ = np.array([ixc1+nx*iyc1, ixc1+nx*iyc2, ixc2+nx*iyc1, ixc2+nx*iyc2])
+            idx_ = np.array([ixc1+nx*iyc1, ixc1+nx*iyc2, ixc2+nx*iyc1, ixc2+nx*iyc2], dtype=np.int32)
             idx_corners[4*k:4*k+4] = idx_
 
-        At = A.copy()
-        At[idx_corners, :] = val * A[idx_corners, :]
+        scale = np.ones(A.shape[0])
+        scale[idx_corners] = val
+        At = diags(scale) @ A    
 
         return At
     
@@ -111,6 +112,8 @@ class Util:
 
         iy = (idx // nx).astype(np.int32)
         ix = (idx % nx).astype(np.int32)
+        # iy = (idx // nx).astype(np.int64)
+        # ix = (idx % nx).astype(np.int64)
         
         return csr_matrix((val, (ir, ic)), shape=(n, n), dtype=np.complex128)
     
@@ -199,7 +202,7 @@ class Util:
 
             flip_map = np.broadcast_to(flip_map.reshape(-1, 1), (ny, nx))
 
-        return radius_map, flip_map
+        return radius_map, flip_map # flip อยากเปลี่ยนเป็นชื่ออื่น
     
     @staticmethod
     def get_idx_at_layer_k(nx, ny, k):
