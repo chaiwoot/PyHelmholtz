@@ -17,7 +17,7 @@ class Domain:
         self,
         limits: float | tuple[float, ...] = (-1, 1, -1, 1),
         h: float | tuple[float, float] = 0.01,
-        v: float | np.ndarray =299792458,
+        v: float | np.ndarray = 299792458,
         positive_downward: bool = False
     ) -> None:
 
