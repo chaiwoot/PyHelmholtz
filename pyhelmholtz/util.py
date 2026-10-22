@@ -112,9 +112,7 @@ class Util:
 
         iy = (idx // nx).astype(np.int32)
         ix = (idx % nx).astype(np.int32)
-        # iy = (idx // nx).astype(np.int64)
-        # ix = (idx % nx).astype(np.int64)
-        
+
         return csr_matrix((val, (ir, ic)), shape=(n, n), dtype=np.complex128)
     
     @staticmethod
@@ -202,7 +200,7 @@ class Util:
 
             flip_map = np.broadcast_to(flip_map.reshape(-1, 1), (ny, nx))
 
-        return radius_map, flip_map # flip อยากเปลี่ยนเป็นชื่ออื่น
+        return radius_map, flip_map
     
     @staticmethod
     def get_idx_at_layer_k(nx, ny, k):
