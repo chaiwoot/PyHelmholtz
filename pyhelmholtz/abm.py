@@ -118,9 +118,9 @@ class RenLiu(ABM):
     Engquist-Majda, Higdon and Ren-Liu absorbing boundary methods
     
     Supports:
-    - Single boundary layer (nc=1): Engquist-Majda ABCs (EM1, EM2) and Higdon ABC (H2)
-    - Multiple transition layers (nc>=2): Ren-Liu hybrid ABC (RLEM1, RLEM2, RLH2)
-    - Dirichlet boundary (nc=1): zero wavefield at boundary (applied only for PML0 method)
+    - Single boundary layer (n=1): Engquist-Majda ABCs (EM1, EM2) and Higdon ABC (H2)
+    - Multiple transition layers (n>=2): Ren-Liu hybrid ABC (RLEM1, RLEM2, RLH2)
+    - Dirichlet boundary (n=1): zero wavefield at boundary (applied only for PML0 method)
     
     Zone structure:
     - interior: the Helmholtz equation
@@ -151,22 +151,22 @@ class RenLiu(ABM):
         Raises
         ------
         ValueError
-            If single-layer boundary operator is used with nc != 1
-            If RenLiu variant is used with nc < 2
+            If single-layer boundary operator is used with  != 1
+            If RenLiu variant is used with n < 2
         """
 
         super().__init__(abm, n, damping_profile)
 
-        # Validate nc for each method type
+        # Validate n for each method type
         if abm in ["D0", "EM1", "EM2", "H2"]:
             if n != 1:
-                raise ValueError(f"{abm} requires n=1 (single boundary layer), got n={n}")
+                raise ValueError(f"{abm} requires n=1, got n={n}")
             self.is_boundary_operator = True
             self.is_renliu_hybrid = False
             
         elif abm in ["RLEM1", "RLEM2", "RLH2"]:
             if n < 2:
-                raise ValueError(f"{abm} requires n>=2 (transition layers), got n={n}")
+                raise ValueError(f"{abm} requires n>=2, got n={n}")
             self.is_boundary_operator = False
             self.is_renliu_hybrid = True
             
@@ -174,7 +174,7 @@ class RenLiu(ABM):
             if damping_profile is None:
                 self.damping_profile = lambda i, nly: (i/nly)**2
         else:
-            raise ValueError(f"Unknown abm type: {abm}. Use D0/EM1/EM2/H2 or RLEM1/RLEM2/RLH2")
+            raise ValueError(f"Unknown ABM type: {abm}. Use \'EM1\', \'EM2\', \'H2\', \'RLEM1\', 'RLEM2\', \'RLH2\'")
 
     def _build_A_outermost_boundary(self, domain:Domain, source:Source, fd:FD) -> csr_matrix:
 
@@ -394,14 +394,17 @@ class RenLiu(ABM):
             A = A_interior + A_boundary 
 
         elif self.is_renliu_hybrid:
-        
-            # discrete EM one-way wave equation at boundary "A_boundary"
+
+            # discrete EM or Higdon operator at boundary "A_boundary"
             if self.abm == "RLEM1":
-                bd_operator = RenLiu(abm="EM1")    
+                bd_operator = RenLiu(abm="EM1")
+                    
             elif self.abm == "RLEM2":
                 bd_operator = RenLiu(abm="EM2")
+
             elif self.abm == "RLH2":
                 bd_operator = RenLiu(abm="H2")
+
             else:
                 raise ValueError(f"Unknown Ren-Liu variant: {self.abm}")
 
@@ -437,7 +440,7 @@ class PML(ABM):
     interior domain and PML zones, reducing reflections at the interface.
     """
 
-    def __init__(self, abm="PML0", n=5, damping_profile=None) -> None:
+    def __init__(self, abm="PML0", n=5, damping_profile=None, R0=1e-5) -> None:
 
         """
         Initialize PML absorbing boundary condition.
@@ -457,12 +460,17 @@ class PML(ABM):
         ------
         ValueError
             If n < 2
-        """
+        """        
 
         super().__init__(abm, n, damping_profile)
 
+        if abm not in ["PML0", "PMLEM1", "PMLEM2", "PMLH2"]:
+            raise ValueError(f"Unknown ABM type: {abm}. Use \'PML0\', \'PMLEM1\', \'PMLEM2\', \'PML0H2\'")
+        
+        self.R0 = R0 # target normal-incidence reflection coefficient
+        
         if n == 1:
-            raise ValueError("n must be >=2 for PML implementation.")
+            raise ValueError(f"{abm} requires n>=2, got n={n}")
         
     def _build_A_PML(self, domain:Domain, source:Source, fd:FD) -> csr_matrix:
 
@@ -487,7 +495,6 @@ class PML(ABM):
             m = 2 # polynomial order
             h_avg = (domain.hx + domain.hy)/2 # averaged grid spacing
             v_max = (domain.v_2d).max()
-            self.R0 = 1e-5 # target normal-incidence reflection coefficient
 
             sigma_max = -(m+1)*v_max*np.log(self.R0) / (2*h_avg*(self.n-1))
             omega = 2*np.pi*source.freq
@@ -537,7 +544,7 @@ class PML(ABM):
         noverlap = fd.noverlap_pml
         A_interior = _build_A_interior(domain, source, fd, noverlap)
 
-        # discrete EM one-way wave equation at boundary "A_boundary"
+        # Dirichlet, discrete EM or Higdon opertor at boundary "A_boundary"
         if self.abm == "PML0":
             bd_operator = RenLiu(abm="D0")
 
