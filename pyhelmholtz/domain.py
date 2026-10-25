@@ -99,7 +99,7 @@ class Domain:
         self,
         center: tuple[float, float],
         radius: float,
-        velocity_value: float
+        v: float
     ) -> None :
 
         """
@@ -108,7 +108,7 @@ class Domain:
         Parameters:
             center : circle center coordinates (xc, yc)
             radius : circle radius             
-            velocity_value: velocity value inside circle
+            v: velocity value inside circle
         """
 
         xc, yc = center
@@ -117,13 +117,13 @@ class Domain:
         distance_sq = (xx-xc)**2 + (yy-yc)**2
 
         vp_1d = self.vp_2d.flatten()
-        vp_1d[distance_sq<=radius*radius] = velocity_value
+        vp_1d[distance_sq<=radius*radius] = v
         self.vp_2d = vp_1d.reshape([self.nyp, self.nxp])
 
     def add_rectangle(
         self,
         bounding_box: tuple[float, float, float, float],
-        velocity_value: float
+        v: float
     ) -> None:
             
         """
@@ -131,7 +131,7 @@ class Domain:
         
         Parameters:
         bounding_box: rectangle coordinates (x1, x2, y1, y2) (tuple)
-        velocity_value: velocity value inside rectangle (float)
+        v: velocity value inside rectangle (float)
         """
         x1, x2, y1, y2 = bounding_box
 
@@ -139,7 +139,7 @@ class Domain:
         ix1, ix2 = round((x1-self.xpmin)/self.hx), round((x2-self.xpmin)/self.hx)
         iy1, iy2 = round((y1-self.ypmin)/self.hy), round((y2-self.ypmin)/self.hy)
 
-        self.vp_2d[iy1:iy2+1, ix1:ix2+1] = velocity_value
+        self.vp_2d[iy1:iy2+1, ix1:ix2+1] = v
 
     def is_homogeneous(self):
 
