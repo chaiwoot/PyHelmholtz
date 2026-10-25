@@ -68,14 +68,18 @@ class PointSource(Source):
 
     def build_b(self, domain:Domain) -> np.ndarray:
 
+        xs = np.asarray(self.xs)
+        ys = np.asarray(self.ys)
+        strength = np.asarray(self.strength)
+
         # convert physical coordinates to grid indices (accounting for padding)
-        isx = np.asarray((self.xs-domain.xpmin)/domain.hx).astype(np.int32) + domain.n
-        isy = np.asarray((self.ys-domain.ypmin)/domain.hy).astype(np.int32) + domain.n
+        isx = np.asarray((xs-domain.xpmin)/domain.hx).astype(np.int32) + domain.n
+        isy = np.asarray((ys-domain.ypmin)/domain.hy).astype(np.int32) + domain.n
         isrc = isx + domain.nx*isy
 
         # create source vector b for the linear system Ax = b
         b = np.zeros(domain.ny*domain.nx, dtype=np.complex128)
-        b[isrc] = -(self.strength)
+        b[isrc] = -strength
 
         return b
 
