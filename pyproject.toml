@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyhelmholtz"
-version = "0.2.0"
+version = "0.1.12"
 authors = [
     { name = "S. Inpuak & C. Boonyasiriwat" },
 ]
