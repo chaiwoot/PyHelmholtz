@@ -6,14 +6,14 @@ A Python package for solving the 2D Helmholtz equation and benchmarking absorbin
 
 - Frequency-domain wave propagation modeling.
 - Support for standard sparse direct solvers via SciPy.
-- Optional high-performance nested dissection algorithms via SuiteSparse.
+- Optional nested dissection algorithms via SuiteSparse.
 - Optional parallel direct solver acceleration via MUMPS.
 
 ---
 
 ## Installation
 
-`PyHelmholtz` provides three installation tiers depending on your performance needs and platform.
+`PyHelmholtz` provides three installation tiers depending on your performance needs and platform. Python 3.10 or later is required.
 
 ### 1. Standard Installation (Recommended)
 If you only need standard solvers using SciPy's `spsolve()`, you can install `PyHelmholtz` instantly with no external C-library or compiler requirements:
@@ -52,16 +52,16 @@ pip install pyhelmholtz[mumps]
 ## Quick Start
 
 Here is a quick example of how to use `PyHelmholtz` to solve the Helmholtz equation using the default parameters:
-- homogeneous domain of size [-1,1]x[-1,1] m<sup>2</sup> with wave speed of 3x10<sup>8</sup> m/s and grid spacing of 1 cm
-- point source of frequency 2x10<sup>9</sup> Hz located at the center of the domain
-- the second-order Engquist-Majda absorbing boundary condition is used to prevent boundary reflections
-- second-order finite-difference (FD) schemes are used
+- Homogeneous domain of size [-1,1]x[-1,1] m<sup>2</sup> with wave speed of 3x10<sup>8</sup> m/s and grid spacing of 1 cm.
+- Point source of frequency 2x10<sup>9</sup> Hz located at the center of the domain.
+- The second-order Engquist-Majda absorbing boundary condition is used to prevent boundary reflections.
+- Second-order finite-difference (FD) schemes are used.
 
 ```python
 import pyhelmholtz as ph
-ho = ph.Helmholtz() # create an Helmholtz object with default parameters
-ho.solve()          # SciPy ’s spsolve () is used by default as the sparse linear solver
-ho.viz()            # visualize the real part of the wave field u
+ho = ph.Helmholtz() # create a Helmholtz solver with default parameters
+ho.solve() # SciPy's spsolve() is used by default as the sparse linear solver
+ho.viz() # visualize the real part of the wavefield u
 ```
 
 Here is another example in which several parameters were manually set. These include the grid spacing h = 10 m, the horizontal and vertical domain limits = [0,1000]x[0,500] m<sup>2</sup>, respectively, the wave speed = 1000 m/s, the point source frequency = 10 Hz and location = [500, 250] m. In addition, the perfectly matched layer (PML) is used as the absorbing boundary method, and the fourth-order FD schemes are used in the calculation.
