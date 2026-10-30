@@ -70,12 +70,12 @@ class Helmholtz:
             from scipy.sparse.linalg import splu
 
             try:
+                
+                from sksparse.cholmod import CholeskyFactor # v0.5.0
 
-                from sksparse.cholmod import analyze
-
-                # Analyze the matrix A and compute the permutation vector p
-                factor_structure = analyze(A.tocsc())
-                p = factor_structure.P()
+                # Analyze the matrix A and compute the permutation vector p                
+                factor_structure = CholeskyFactor(A.tocsc()) # v0.5.0
+                p = factor_structure.get_perm() # v0.5.0
                 
                 # Apply permutation to A where P is the permutation matrix
                 N = A.shape[0]
