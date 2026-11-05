@@ -6,6 +6,7 @@ from .domain import *
 from .source import *
 from .fd import *
 from .util import *
+from .solver import *
 
 LIGHT_SPEED = 299792458.0 # light speed in vacuum
 
@@ -36,153 +37,44 @@ class Helmholtz:
         return (A, b)
 
     # This method solve the linear system Ax = b
-    def solve(self, solver="spsolve") -> None:
+    def solve(
+        self,
+        solver: str = "spsolve",
+        nprocs: int = 1
+    ) -> None:
 
         nx, ny, n = self.domain.nx, self.domain.ny, self.domain.n
 
         A, b = self.build()
 
-        if solver == "spsolve": # sparse direct solver of SciPy
+        # Sparse direct solver of SciPy
+        if solver == "spsolve":
 
             from scipy.sparse.linalg import spsolve
-            x = spsolve(A, b) # use COLAMD ordering by default
-            
-        elif solver == "mumps": # MUMPS: MUltifrontal Massively Parallel Sparse direct solver
+            x = spsolve(A, b)
 
-            import traceback
+        # MUMPS: Multifrontal Massively Parallel Sparse direct solver
+        elif solver == "mumps":
+            x = mumps_solver(A, b, nprocs)
 
-            try:
-                x = self.pymumps(A, b)
-
-            except Exception:
-
-                print("\n--- CRITICAL MUMPS TRACKING DEBUG ---")
-                traceback.print_exc()
-                print("-------------------------------------\n")
-                print("Since MUMPS or PyMUMPS is not available, SciPy's spsolve() is used instead!")
-
-                from scipy.sparse.linalg import spsolve
-                x = spsolve(A, b)
-
+        # Nested dissection
         elif solver == "nested_dissection":
+            x = nested_dissection_solver(A, b)            
 
-            import scipy.sparse as sp
-            from scipy.sparse.linalg import splu
-
-            try:
-                
-                from sksparse.cholmod import CholeskyFactor # v0.5.0
-
-                # Analyze the matrix A and compute the permutation vector p                
-                factor_structure = CholeskyFactor(A.tocsc()) # v0.5.0
-                p = factor_structure.get_perm() # v0.5.0
-                
-                # Apply permutation to A where P is the permutation matrix
-                N = A.shape[0]
-                P = sp.csr_matrix((np.ones(N), (np.arange(N), p)), shape=(N, N))
-                A_perm = P @ A @ P.T
-                b_perm = P @ b
-                
-                # Solve the linear system with SciPy's splu using 'NATURAL' ordering
-                # because we've already reordered the matrix
-                solver = splu(A_perm.tocsc(), permc_spec='NATURAL')
-                x_perm = solver.solve(b_perm)
-
-                # Reverse Permutation
-                x = P.T @ x_perm
-
-            except Exception:
-
-                print("Since scikit-sparse is not available, SciPy's spsolve() is used instead!")
-                from scipy.sparse.linalg import spsolve
-                x = spsolve(A, b)
-
+        # GMRES iterative solver of SciPy
         # Remark: iterative solver is much slower than the above direct solvers
-        elif solver == "gmres": # GMRES iterative solver of SciPy
-
-            import scipy.sparse as sp
-            from scipy.sparse.linalg import gmres, spilu, LinearOperator
-
-            beta = 0.5
-
-            k = 2*np.pi*self.source.freq/self.domain.v_2d # wavenumber
-            k_flat = k.flatten()
-
-            shift_diag = 1j * beta * (k_flat**2)
-
-            M = A + sp.diags(shift_diag, format='csr')
-
-            try:
-                ilu = spilu(M.tocsc(), drop_tol=1e-3, fill_factor=10, 
-                            permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.1)
-                
-            except RuntimeError as e:
-                return None, f"Preconditioner failed: {e}"
-            
-            M_x = lambda x: ilu.solve(x)
-            preconditioner = LinearOperator(A.shape, M_x)  # create a preconditioner
-            x, info = gmres(A, b, M=preconditioner, rtol=1e-6, atol=1e-8, restart=50)
-
-            if info != 0:
-                print(f"GMRES failed to converge ({info})")
+        elif solver == "gmres": 
+            x = gmres_solver(A, b, self.source.freq, self.domain.v_2d)
 
         else:
-            raise Exception(f"Solver '{solver}' is not supported. Supported solvers are 'spsolve' and 'mumps' (pymumps).")
+            raise Exception(f"Solver '{solver}' is not supported. Supported solvers are 'spsolve', 'mumps', 'nested_dissection' and 'gmres'.")
 
         self.x = x # wavefield solution in 1d-array
         self.x_2d = x.reshape([ny, nx]) # wavefield solution in 2d-array
         self.u = (x.reshape([ny, nx]))[n:-n, n:-n] # wavefield solution in 2d-array (exclude solution in absorbing domain)  
 
-    # Interface to the complex-arithmetic MUMPS solver
-    def pymumps(self, A, b):
-
-        from mumps import ZMumpsContext
-
-        ctx = ZMumpsContext(sym=0, par=1)
-        x = np.array(b, dtype='D')
-        n = b.shape[0]
-
-        if ctx.myid == 0:
-
-            row, col = Util.get_row_col_indices_of_csr_matrix(A)
-            irn = np.array(row.astype(np.int32)+1, dtype='i')
-            jcn = np.array(col.astype(np.int32)+1, dtype='i')
-            a   = np.array(A.data, dtype='D')
-
-            ctx.set_shape(n)
-            ctx.set_centralized_assembled(irn, jcn, a)
-            ctx.set_rhs(x) # Point master process to our solution array
-
-        ctx.set_silent()
-        ctx.run(job=6)     # Run Analysis, Factorization, and Solve together
-
-        # If running in serial mode without a real MPI manager, 
-        # ctx.comm might be None or evaluate to False.
-        if hasattr(ctx, 'comm') and ctx.comm is not None:
-
-            try:
-                ctx.comm.Bcast(x, root=0)
-
-            except AttributeError:
-
-                # If mpi4py is running but structured differently
-                from mpi4py import MPI
-
-                if MPI.COMM_WORLD.Get_size() > 1:
-                    MPI.COMM_WORLD.Bcast(x, root=0)
-
-        # if ctx.comm is not None:
-        #     # If running via mpiexec, use the internal mpi4py communicator to sync data
-        #     ctx.comm.Bcast(x, root=0)
-        ctx.destroy()
-
-        return x
 
     # This method is a quick tool for visualizing various fields and medium property.
-    # - combine <unit> and <scale>
-    # - add <vlim>
-    # - rename <plotmode> as <mode>, <colormap> as <cmap>
-    # - allow <data> to be an array of the same size as the solution <self.u>
     def viz(
             self,
             data = "solution",  # available data: "solution", "velocity", "incident", "total"
