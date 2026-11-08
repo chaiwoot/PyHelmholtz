@@ -499,7 +499,7 @@ class PML(ABM):
             sigma_max = -(m+1)*v_max*np.log(self.R0) / (2*h_avg*(self.n-1))
             omega = 2*np.pi*source.freq
 
-            self.damping_profile = lambda j, n: 1 / (1 + 1j*(sigma_max/omega)*(j/(n-1))**m)
+            self.damping_profile = lambda i, n: 1 / (1 + 1j*(sigma_max/omega)*(i/(n-1))**m)
     
         noverlap = fd.noverlap_pml
 
