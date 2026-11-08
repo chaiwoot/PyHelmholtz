@@ -71,6 +71,16 @@ def mumps_solver(A, b, nprocs):
             text=True,
         )
 
+        # enables detailed diagnostic printing/status
+        # configured via ctx.set_icntl(4, 2) in mumps_worker.py
+        # if result.stdout:
+        #     print("--- WORKER STDOUT ---")
+        #     print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+
+        # if result.stderr:
+        #     print("--- WORKER STDERR ---")
+        #     print(result.stderr, end="" if result.stderr.endswith("\n") else "\n")
+
         if result.returncode != 0:
             raise RuntimeError(
                 "Parallel MUMPS solve failed.\n"
