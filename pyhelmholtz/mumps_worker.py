@@ -67,6 +67,12 @@ def run_worker():
     # Initialize the MUMPS context on every MPI rank.
     ctx = ZMumpsContext(sym=0, par=1)
 
+    # enables detailed diagnostic printing/status
+    ctx.set_icntl(4, 2) 
+
+    # enable out-of-core factorization
+    ctx.set_icntl(22, 1)  
+
     x = None
     preparation_error = None
 
