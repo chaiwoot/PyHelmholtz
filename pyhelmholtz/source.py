@@ -89,7 +89,7 @@ class PlaneWave(Source):
 
     def __init__(
         self,
-        freq: float = 2e9,
+        freq: str = 2e9,
         source_type: str = "plane_wave",
         v0: float = 299792458.0,
         strength: complex = 1.0,
