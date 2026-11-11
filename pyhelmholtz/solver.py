@@ -105,11 +105,11 @@ def nested_dissection_solver(A, b):
     import scipy.sparse as sp
     from scipy.sparse.linalg import splu
 
-    from sksparse.cholmod import analyze
+    from sksparse.cholmod import CholeskyFactor
 
     # Analyze the matrix A and compute the permutation vector p
-    factor_structure = analyze(A.tocsc())
-    p = factor_structure.P()
+    factor_structure = CholeskyFactor(A.tocsc())
+    p = factor_structure.get_perm()
 
     # Apply permutation to A where P is the permutation matrix
     N = A.shape[0]
