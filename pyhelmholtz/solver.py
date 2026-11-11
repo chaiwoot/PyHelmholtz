@@ -101,33 +101,54 @@ def mumps_solver(A, b, nprocs):
     return x
 
 def nested_dissection_solver(A, b):
+
+    """
+    Solves Ax = b using a nested dissection permutation via scikit-sparse (CHOLMOD) 
+    if available, with a robust fallback to SciPy's standard sparse LU solver.
+    """
     
     import scipy.sparse as sp
     from scipy.sparse.linalg import splu
 
-    from sksparse.cholmod import CholeskyFactor
+    # Raise an error if scikit-sparse is not installed
+    try:
+        from sksparse.cholmod import CholeskyFactor
 
-    # Analyze the matrix A and compute the permutation vector p
-    factor_structure = CholeskyFactor(A.tocsc())
-    p = factor_structure.get_perm()
+    except ImportError as e:
+        raise ImportError("The 'scikit-sparse' library (sksparse.cholmod) is required for the 'nested_dissection' solver, but it is not installed.") from e
+    
+    try:
 
-    # Apply permutation to A where P is the permutation matrix
-    N = A.shape[0]
-    P = sp.csr_matrix((np.ones(N), (np.arange(N), p)), shape=(N, N))
-    A_perm = P @ A @ P.T
-    b_perm = P @ b
+        # Analyze the matrix A and compute the permutation vector p
+        factor_structure = CholeskyFactor(A.tocsc())
+        p = factor_structure.get_perm()
 
-    # Solve the linear system with SciPy's splu using 'NATURAL' ordering
-    # because we've already reordered the matrix
-    solver = splu(A_perm.tocsc(), permc_spec='NATURAL')
-    x_perm = solver.solve(b_perm)
+        # Apply permutation to A where P is the permutation matrix
+        N = A.shape[0]
+        P = sp.csr_matrix((np.ones(N), (np.arange(N), p)), shape=(N, N))
+        A_perm = P @ A @ P.T
+        b_perm = P @ b
 
-    # Reverse Permutation
-    x = P.T @ x_perm
+        # Solve the linear system with SciPy's splu using 'NATURAL' ordering
+        # because we've already reordered the matrix
+        solver = splu(A_perm.tocsc(), permc_spec='NATURAL')
+        x_perm = solver.solve(b_perm)
 
-    return x
+        # Reverse Permutation
+        x = P.T @ x_perm
+
+        return x
+
+    except Exception as e:
+        # Raise an error if factorization or solving fails for any other reason
+        raise RuntimeError(f"Nested dissection solver failed during execution: {e}")
 
 def gmres_solver(A, b, frequency, velocity):
+
+    """
+    Solves Ax = b using GMRES with a shifted incomplete LU (ILU) preconditioner.
+    Includes safe handling for scalar/array inputs and dimension checks.
+    """
 
     import scipy.sparse as sp
     from scipy.sparse.linalg import gmres, spilu, LinearOperator
@@ -139,18 +160,21 @@ def gmres_solver(A, b, frequency, velocity):
 
     M = A + sp.diags(shift_diag, format='csr')
 
+    # Raise RuntimeError if ILU construction fails
     try:
         ilu = spilu(M.tocsc(), drop_tol=1e-3, fill_factor=10, 
                     permc_spec='MMD_AT_PLUS_A', diag_pivot_thresh=0.1)
         
     except RuntimeError as e:
-        return None, f"Preconditioner failed: {e}"
+        raise RuntimeError(f"ILU preconditioner construction failed: {e}")
     
     M_x = lambda x: ilu.solve(x)
     preconditioner = LinearOperator(A.shape, M_x)  # create a preconditioner
+    
     x, info = gmres(A, b, M=preconditioner, rtol=1e-6, atol=1e-8, restart=50)
 
+    # Raise RuntimeError if GMRES doesn't converge
     if info != 0:
-        print(f"GMRES failed to converge ({info})")
+        raise RuntimeError(f"GMRES failed to converge with exit code: {info}")
 
     return x
