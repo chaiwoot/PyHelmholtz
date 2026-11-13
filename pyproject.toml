@@ -4,9 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyhelmholtz"
-version = "0.2.2-alpha"
+version = "0.2.2"
 authors = [
-    { name = "S. Inpuak & C. Boonyasiriwat" },
+    { name = "Sirawit Inpuak", email = "sirawit.inp@hotmail.com" },
+    { name = "Chaiwoot Boonyasiriwat", email = "chaiwoot@gmail.com" },
 ]
 description = "PyHelmholtz is a framework for benchmarking absorbing boundary methods for 2D Helmholtz equation."
 readme = "README.md"
