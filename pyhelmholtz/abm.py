@@ -448,7 +448,7 @@ class PML(ABM):
         Parameters
         ----------
         abm : str
-            three variants: "PML0", "PMLEM1" and "PMLEM2"
+            four variants: "PML0", "PMLEM1", "PMLEM2" and "PMLH2"
         n : int
             PML thickness in cells (must be >=2)
         damping_profile : callable
@@ -465,11 +465,11 @@ class PML(ABM):
         super().__init__(abm, n, damping_profile)
 
         if abm not in ["PML0", "PMLEM1", "PMLEM2", "PMLH2"]:
-            raise ValueError(f"Unknown ABM type: {abm}. Use \'PML0\', \'PMLEM1\', \'PMLEM2\', \'PML0H2\'")
+            raise ValueError(f"Unknown ABM type: {abm}. Use \'PML0\', \'PMLEM1\', \'PMLEM2\', \'PMLH2\'")
         
         self.R0 = R0 # target normal-incidence reflection coefficient
         
-        if n == 1:
+        if n < 2:
             raise ValueError(f"{abm} requires n>=2, got n={n}")
         
     def _build_A_PML(self, domain:Domain, source:Source, fd:FD) -> csr_matrix:
