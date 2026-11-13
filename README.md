@@ -19,7 +19,7 @@ A Python package for solving the 2D Helmholtz equation and benchmarking absorbin
 If you only need standard solvers using SciPy's `spsolve()`, you can install `PyHelmholtz` instantly with no external C-library or compiler requirements:
 
 ```bash
-pip install git+https://github.com/chaiwoot/PyHelmholtz.git@v0.2.2-alpha
+pip install git+https://github.com/chaiwoot/PyHelmholtz.git@v0.2.2
 ```
 
 ### 2. With Nested Dissection Support (Optional)
@@ -30,7 +30,7 @@ To enable advanced nested dissection algorithms, the package requires `scikit-sp
 conda install -c conda-forge scikit-sparse
 
 # Install PyHelmholtz with the optional suitesparse feature flag
-pip install "pyhelmholtz[suitesparse] @ git+https://github.com/chaiwoot/PyHelmholtz.git@v0.2.2-alpha"
+pip install "pyhelmholtz[suitesparse] @ git+https://github.com/chaiwoot/PyHelmholtz.git@v0.2.2"
 ```
 
 ### 3. With MUMPS Acceleration (Optional, Linux only)
@@ -44,7 +44,7 @@ sudo apt-get update
 sudo apt-get install libmumps-dev
 
 # Install PyHelmholtz with the optional mumps feature flag
-pip install "pyhelmholtz[mumps] @ git+https://github.com/chaiwoot/PyHelmholtz.git@v0.2.2-alpha"
+pip install "pyhelmholtz[mumps] @ git+https://github.com/chaiwoot/PyHelmholtz.git@v0.2.2"
 ```
 
 ---
